@@ -1,0 +1,124 @@
+# Deploy Lootea Chatwoot to production VPS when main is updated.
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        id: deploy
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          APP_DIR: ${{ secrets.PRODUCTION_APP_PATH }}
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT }}
+          envs: APP_DIR
+          script_stop: true
+          command_timeout: 60m
+          script: |
+            set -euo pipefail
+
+            APP_DIR="${APP_DIR:-/var/www/chatwoot}"
+            cd "$APP_DIR"
+
+            COMPOSE="docker compose -f docker-compose.production.yaml -f docker-compose.lootea.yml"
+            IMAGE="lootea/chatwoot:production"
+            PREVIOUS_IMAGE="lootea/chatwoot:previous"
+            SMOKE_URL="http://127.0.0.1:3000/api"
+
+            smoke_check() {
+              local i
+              for i in $(seq 1 45); do
+                if curl -sf "$SMOKE_URL" >/dev/null; then
+                  echo "Smoke check OK (attempt $i)"
+                  return 0
+                fi
+                sleep 2
+              done
+              echo "Smoke check FAILED after retries"
+              return 1
+            }
+
+            echo "==> Tagging current image as previous (if any)"
+            HAD_PREVIOUS=0
+            if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+              docker tag "$IMAGE" "$PREVIOUS_IMAGE"
+              HAD_PREVIOUS=1
+              echo "Saved $PREVIOUS_IMAGE"
+            else
+              echo "No existing production image yet"
+            fi
+
+            echo "==> Fetching main"
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+
+            echo "==> Building"
+            $COMPOSE build
+
+            echo "==> Preparing database"
+            $COMPOSE run --rm rails bundle exec rails db:chatwoot_prepare
+
+            echo "==> Starting stack with new image"
+            $COMPOSE up -d
+
+            if smoke_check; then
+              echo "==> Deploy successful"
+              git rev-parse --short HEAD
+              $COMPOSE ps
+              # Keep :previous around for the next deploy's rollback target
+              exit 0
+            fi
+
+            echo "==> New deploy failed smoke check"
+
+            if [ "$HAD_PREVIOUS" != "1" ]; then
+              echo "No previous image available to roll back to"
+              exit 1
+            fi
+
+            echo "==> Rolling back to previous image"
+            docker tag "$PREVIOUS_IMAGE" "$IMAGE"
+            $COMPOSE up -d
+
+            if smoke_check; then
+              # Visible in the Actions UI even though the job stays green
+              echo "::warning::Deploy of the new revision failed the smoke check. Production was rolled back to the previous image and is healthy again. Check migrations manually if db:chatwoot_prepare already ran."
+              echo "ROLLBACK_OCCURRED=1"
+              git rev-parse --short HEAD
+              $COMPOSE ps
+              exit 0
+            fi
+
+            echo "==> Rollback also failed smoke check"
+            exit 1
+
+      - name: Publish deploy summary
+        if: always()
+        run: |
+          {
+            echo "## Deploy Production"
+            echo ""
+            echo "- Resultado del job: **${{ job.status }}**"
+            echo "- Revisa el log del step SSH."
+            echo "- Si aparece \`ROLLBACK_OCCURRED=1\` o un warning amarillo, el deploy nuevo falló y se restauró la imagen anterior (job en verde a propósito)."
+            echo "- El rollback **no** revierte migraciones de DB; si \`db:chatwoot_prepare\` corrió, valida compatibilidad a mano."
+          } >> "$GITHUB_STEP_SUMMARY"
