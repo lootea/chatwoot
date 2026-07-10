@@ -1,0 +1,30 @@
+# Lootea production override — build from this fork instead of chatwoot/chatwoot:latest
+#
+# Usage:
+#   docker compose -f docker-compose.production.yaml -f docker-compose.lootea.yml build
+#   docker compose -f docker-compose.production.yaml -f docker-compose.lootea.yml up -d
+
+services:
+  base:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: lootea/chatwoot:production
+
+  rails:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: lootea/chatwoot:production
+
+  sidekiq:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: lootea/chatwoot:production
+
+  postgres:
+    environment:
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
