@@ -1,27 +1,20 @@
-# Lootea production override — build from this fork instead of chatwoot/chatwoot:latest
+# Lootea production override — pull the versioned ECR image. Never build on tools.
 #
-# Usage:
-#   docker compose -f docker-compose.production.yaml -f docker-compose.lootea.yml build
-#   docker compose -f docker-compose.production.yaml -f docker-compose.lootea.yml up -d
+# CHATWOOT_IMAGE is written to .env by deploy_chatwoot.sh (CI).
+# Example: 893072529062.dkr.ecr.mx-central-1.amazonaws.com/lootea/chatwoot:<sha>
+#
+#   docker compose -f docker-compose.production.yaml -f docker-compose.lootea.yml pull
+#   docker compose -f docker-compose.production.yaml -f docker-compose.lootea.yml up -d --no-build
 
 services:
   base:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    image: lootea/chatwoot:production
+    image: ${CHATWOOT_IMAGE:?CHATWOOT_IMAGE}
 
   rails:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    image: lootea/chatwoot:production
+    image: ${CHATWOOT_IMAGE:?CHATWOOT_IMAGE}
 
   sidekiq:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
-    image: lootea/chatwoot:production
+    image: ${CHATWOOT_IMAGE:?CHATWOOT_IMAGE}
 
   postgres:
     environment:

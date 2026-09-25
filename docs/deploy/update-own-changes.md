@@ -1,7 +1,7 @@
 # Actualizar cambios propios
 
 ```text
-develop → merge a main → push → Actions despliega
+develop → merge a main → push → Actions publica imagen → tools pull
 ```
 
 ## Desarrollo
@@ -19,17 +19,18 @@ git merge develop
 git push origin main
 ```
 
-El workflow **Deploy Production** corre solo. Redeploy manual: Actions → Run workflow.
+El workflow **Deploy Production** corre solo (publish ECR + pull). Redeploy de un SHA ya publicado: Actions → Run workflow (vuelve a mover el alias `production` y tools hace pull).
 
-## Fallback manual (VPS)
+## Fallback manual (tools)
 
 ```bash
 cd /var/www/chatwoot
 export COMPOSE="docker compose -f docker-compose.production.yaml -f docker-compose.lootea.yml"
 git pull --ff-only origin main
-$COMPOSE build
+# CHATWOOT_IMAGE en .env; no construir
+$COMPOSE pull rails sidekiq
 $COMPOSE run --rm rails bundle exec rails db:chatwoot_prepare
-$COMPOSE up -d
+$COMPOSE up -d --no-build
 ```
 
-Solo `.env` en el servidor: editar y `$COMPOSE up -d --force-recreate rails sidekiq`.
+Solo `.env` en el servidor (SMTP, etc.): editar y `$COMPOSE up -d --force-recreate --no-build rails sidekiq`.

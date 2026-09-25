@@ -1,0 +1,2 @@
+# Scripts del fork deben ir en LF: se ejecutan en Actions y en tools (Linux).
+.github/scripts/*.sh text eol=lf

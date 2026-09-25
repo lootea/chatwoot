@@ -1,6 +1,12 @@
 # Setup inicial
 
-VPS dedicado, Docker, rama **`main`**.
+VPS **tools**, Docker, rama **`main`**. La imagen **no** se construye aquí: sale de ECR.
+
+## Una vez en AWS + GitHub
+
+Ver [production-workflow.md](production-workflow.md) (repo ECR `lootea/chatwoot`, OIDC, variables `ECR_*`).
+
+Publicar la primera imagen: Actions → **Publish ECR image** (o el primer push a `main`).
 
 ## Clone
 
@@ -11,10 +17,17 @@ cd /var/www/chatwoot
 cp .env.example .env && chmod 600 .env
 ```
 
+Añadir al `.env` la URI publicada (CI lo reescribe en cada deploy):
+
+```env
+CHATWOOT_IMAGE=<account>.dkr.ecr.<region>.amazonaws.com/lootea/chatwoot:<sha>
+```
+
 ## `.env` mínimo
 
 | Variable | Valor |
 |---|---|
+| `CHATWOOT_IMAGE` | URI ECR del primer publish |
 | `FRONTEND_URL` | `https://support.lootea.com.mx` |
 | `FORCE_SSL` | `true` |
 | `SECRET_KEY_BASE` | `openssl rand -hex 64` |
@@ -25,13 +38,15 @@ cp .env.example .env && chmod 600 .env
 
 Resend: `SMTP_ADDRESS=smtp.resend.com`, `SMTP_PORT=587`, `SMTP_USERNAME=resend`, `SMTP_PASSWORD=re_...`
 
-## Arranque
+## Arranque (primera vez, si CI aún no desplegó)
+
+En tools hace falta un `docker login` a ECR. El camino normal es **Run workflow → Deploy Production**, que loguea y hace pull. Manual solo si ya tienes password/sesión:
 
 ```bash
 export COMPOSE="docker compose -f docker-compose.production.yaml -f docker-compose.lootea.yml"
-$COMPOSE build
+$COMPOSE pull
 $COMPOSE run --rm rails bundle exec rails db:chatwoot_prepare
-$COMPOSE up -d
+$COMPOSE up -d --no-build
 ```
 
 ## Nginx + SSL
